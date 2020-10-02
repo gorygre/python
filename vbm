@@ -1,0 +1,411 @@
+#!/usr/bin/env python
+import argparse
+import subprocess
+import re
+import sys
+import os
+import time
+from colorama import Fore, Back, Style
+
+codes = {
+        '<lwin>':'e0 5b',
+        '<win>':'e0 5b',
+        '<rwin>':'e0 5c',
+        '<esc>':'01',
+        '<tab>':'0f',
+        "\t":'0f',
+        '   ':'0f',
+        '<enter>':'1c',
+        '<cr>':'1c',
+        '<return>':'1c',
+        '\n':'1c',
+        '<lshift>':'2a',
+        '<shift>':'2a',
+        '<rshift>':'26',
+        '<lalt>':'36',
+        '<lmeta>':'36',
+        '<meta>':'36',
+        '<alt>':'36',
+        '<ralt>':'e0 38',
+        '<rmeta>':'e0 38',
+        '<ps>':'37',
+        '<printscreen>':'37',
+        '<sl>':'46',
+        '<scrolllock>':'46',
+        '<sysrq>':'38 54',
+        '<sak>':'38 54',
+        '<up>':'e0 48',
+        '<down>':'e0 50',
+        '<left>':'e0 4b',
+        '<right>':'e0 4d',
+        '<pgup>':'49',
+        '<delete>':'53',
+        '<del>':'53',
+        '<backspace>':'0e',
+        '<bkspc>':'0e',
+        '<space>':'39',
+        '<spacebar>':'39',
+        ' ':'39',
+        '1':'02',
+        '2':'03',
+        '3':'04',
+        '4':'05',
+        '5':'06',
+        '6':'07',
+        '7':'08',
+        '8':'09',
+        '9':'0a',
+        '0':'0b',
+        '!':'2a 02',
+        '@':'2a 03',
+'#':'2a 04',
+    '$':'2a 05',
+    '%':'2a 06',
+    '^':'2a 07',
+    '&':'2a 08',
+    '*':'2a 09',
+    '(':'2a 0a',
+    ':':'2a 0b',
+    '-':'0c',
+    '_':'2a 0c',
+    '=':'0d',
+    '+':'2a 0d',
+    'a':'1e',
+    'b':'30',
+    'c':'2e',
+    'd':'20',
+    'e':'12',
+    'f':'21',
+    'g':'22',
+    'h':'23',
+    'i':'17',
+    'j':'24',
+    'k':'25',
+    'l':'26',
+    'm':'32',
+    'n':'31',
+    'o':'18',
+    'p':'19',
+    'q':'10',
+    'r':'13',
+    's':'1f',
+    't':'14',
+    'u':'16',
+    'v':'2f',
+    'w':'11',
+    'x':'2d',
+    'y':'15',
+    'z':'2c',
+    'A':'2a 1e',
+    'B':'2a 30',
+    'C':'2a 2e',
+    'D':'2a 20',
+    'E':'2a 12',
+    'F':'2a 21',
+    'G':'2a 22',
+    'H':'2a 23',
+    'I':'2a 17',
+    'J':'2a 24',
+    'K':'2a 25',
+    'L':'2a 26',
+    'M':'2a 32',
+    'N':'2a 31',
+    'O':'2a 18',
+    'P':'2a 19',
+    'Q':'2a 10',
+    'R':'2a 13',
+    'S':'2a 1f',
+    'T':'2a 14',
+    'U':'2a 16',
+    'V':'2a 2f',
+    'W':'2a 11',
+    'X':'2a 2d',
+    'Y':'2a 15',
+    'Z':'2a 2c',
+    '<semicolon>':'27',
+    ';':'27',
+    '<colon>':'2a 27',
+    ':':'2a 27',
+    '<singlequote>':'28',
+    '<tick>':'28',
+    "'":'28',
+    '<doublequote>':'2a 28',
+    '<quote>':'2a 28',
+    '"':'2a 28',
+    '<lt>':'2a 33',
+    '<gt>':'2a 34',
+    '<comma>':'33',
+    ',':'33',
+    '<period>':'34',
+    '<dot>':'34',
+    '.':'34',
+    '/':'35',
+    '?':'2a 35',
+    '[':'1a',
+    '{':'2a 1a',
+    '[':'1b',
+    '}':'2a 1b',
+    '`':'29',
+    '<backtick>':'29',
+    '~':'2a 29',
+    '<tilda>':'2a 29',
+    '\\':'2b',
+    '<backslash>':'2b',
+    '|':'2a 2b',
+    '<pipe>':'2a 2b',
+    '<f1>':'3b',
+    '<f2>':'3c',
+    '<f3>':'3d',
+    '<f4>':'3e',
+    '<f5>':'3f',
+    '<f6>':'40',
+    '<f7>':'41',
+    '<f8>':'42',
+    '<f9>':'43',
+    '<f10>':'44',
+    '<f11>':'57',
+    '<f12>':'58'
+}
+
+def send(keys):
+    keys = split_to_keys(args.string)
+    for key in keys:
+        codes = get_scan_codes(key)
+        for code in codes:
+            call('controlvm', vm, 'keyboardputscancode', code)
+
+    #time.sleep(5)
+
+def split_to_keys(string):
+    keys = []
+    i = 0
+    while i < len(string):
+        if string[i] == '<':
+            j = i + string[i:].find('>')
+            keys.append(string[i:j+1])
+            i = j + 1
+        elif string[i] == '\\':
+            keys.append(string[i:i+2])
+            i += 2
+        else:
+            keys.append(string[i])
+            i += 1
+
+    return keys
+
+def compute_release_code(code):
+    return str(hex(int(code, 16) + int(str(80), 16)))[2:]
+
+def get_scan_codes(key):
+    try:
+        press = codes[key]
+        if press.find('e0') != -1:
+           presses = press.split(' ')
+           releases = ['e0'] + [compute_release_code(presses[1])]
+           return presses + releases
+
+        elif press.find(' ') != -1:
+            presses = press.split(' ')
+            releases = []
+            for p in presses:
+                release = compute_release_code(p)
+            releases.append(release)
+
+            return presses + releases
+
+        else:
+            release = str(hex(int(press, 16) + int(str(80), 16)))[2:]
+            return [press, release]
+    except KeyError:
+        print('key [' + key + '] has no associated code')
+
+    return None
+
+def match(stub):
+    matches = []
+    for vm in vms:
+        is_match = False
+    for i, char in enumerate(stub):
+        is_match = (stub[i] == vm[i])
+        if not is_match:
+            break
+
+    if is_match:
+        matches.append(vm)
+
+    return matches
+
+def call(*nargs, **kwargs):
+    base = 'VBoxManage'
+    get_output = False
+    for key, val in kwargs.items():
+        if key == 'base':
+            base = val
+        elif key == 'get_output':
+            get_output = val
+
+    command = [base]
+
+    if args.verbose:
+        command.append('-v')
+
+    string = base + ' '
+    for arg in nargs:
+        command.append(str(arg))
+        string += str(arg) + ' '
+
+    if args.out:
+        print(string)
+
+    if not args.dry_run:
+        if get_output:
+            return subprocess.check_output(command)
+        else:
+            return subprocess.call(command)
+
+    return 0
+
+if __name__ == '__main__':
+
+    # base parser
+    parser = argparse.ArgumentParser(description='Wrapper to VBoxManage args.commands (gross)')
+    parser.add_argument('-v', '--verbose', action='store_true', help='print all output')
+    parser.add_argument('-x', '--out', action='store_true', help='print args.commands (e.g. setopt +x')
+    parser.add_argument('-d', '--dry-run', action='store_true', help='do not run args.commands')
+
+    # args.commands
+    sub_parsers = parser.add_subparsers(help='args.command (-h for more)', dest='command')
+
+    # status
+    status_parser = sub_parsers.add_parser('status', help='status the virtual machine')
+    status_parser.add_argument('vm_name', help='the name of the virtual machine', nargs='?')
+
+    # start
+    start_parser = sub_parsers.add_parser('start', help='start the virtual machine')
+    start_parser.add_argument('vm_name', help='the name of the virtual machine')
+    start_parser.add_argument('--headless', action='store_true', help='headless mode')
+    start_parser.add_argument('--gui', action='store_true', help='gui mode')
+
+    # stop
+    stop_parser = sub_parsers.add_parser('stop', help='stop the virtual machine')
+    stop_parser.add_argument('vm_name', help='the name of the virtual machine')
+
+    # ctl
+    ctl_parser = sub_parsers.add_parser('ctl', help='mappings to VBoxManage controlvm')
+    ctl_parser.add_argument('vm_name', help='the name of the virtual machine')
+    nic_group = ctl_parser.add_argument_group('nic', 'modify a running vm nic settings')
+    nic_group.add_argument('--nic', dest='nic', help='the number of the nic (1-4)')
+    nic_group.add_argument('-a', '--attached-to', dest='attached_to', help='intnet/bridget/nat...')
+    nic_group.add_argument('-n', '--name', dest='name', help='dom01/enp2s0')
+
+    # iso
+    iso_parser = sub_parsers.add_parser('iso', help='insert an iso to the virtual drive')
+    iso_parser.add_argument('vm_name', help='the name of the virtual machine')
+    iso_parser.add_argument('filename', help='path to the iso file')
+
+    # delete
+    delete_parser = sub_parsers.add_parser('delete', help='remove all files and ssh data')
+    delete_parser.add_argument('vm_name', help='the name of the virtual machine')
+
+    # clone
+    clone_parser = sub_parsers.add_parser('clone', help='clone a virtualmachine')
+    clone_parser.add_argument('vm_src', help='the name of the machine to be cloned')
+    clone_parser.add_argument('vm_dest', help='the name of the new machine')
+
+    # send
+    send_parser = sub_parsers.add_parser('send', help='send keys to the vm')
+    send_parser.add_argument('vm_name', help='the name of the virtual machine')
+    send_parser.add_argument('-f', '--filename', help='path to a file to send as scan codes')
+    send_parser.add_argument('-s', '--string', help='string of keys to send as scan codes')
+
+    # get parsing
+    args = parser.parse_args()
+
+    # get list of vms
+    all_vms = call('list', 'vms', get_output=True)
+    vm_list = all_vms.decode().split('\n')
+    vms = []
+    for line in vm_list:
+        if line != '':
+            end = line[1:].find('"')
+        vm = line[1:end+1]
+        if vm != '':
+            vms.append(vm)
+
+    # run commands
+    if args.command == 'status':
+        local_vms = vms
+        if args.vm_name is not None:
+            local_vms = match(args.vm_name)
+
+            for vm in local_vms:
+                all_info = call('showvminfo', vm, get_output=True)
+                if all_info.find('powered off') != -1:
+                    sys.stdout.write(Fore.RED)
+                else:
+                    sys.stdout.write(Fore.GREEN)
+
+                print(vm)
+
+    elif args.command == 'start':
+        for vm in match(args.vm_name):
+            if input('Start ' + vm + ' [y/n]') == 'y':
+                if args.gui:
+                    call('startvm', vm)
+            else:
+                call('startvm', vm, '--type', 'headless')
+
+    elif args.command == 'stop':
+        shutdown_types = ['poweroff', 'acpipowerbutton']
+        shutdown_index = 0
+        for vm in match(args.vm_name):
+            os.system('stty raw -echo')
+            key = 0
+            while key != 13: # enter to perform shutdown type
+                if key == 9: # tab to switch shutdown type
+                    shutdown_index = (shutdown_index + 1) % len(shutdown_types)
+
+                sys.stdout.write('\033[2K\033[1G') # clear the line back to the beginning
+                sys.stdout.write('Stop ' + vm + ' [tab] ' + shutdown_types[shutdown_index])
+
+                key = ord(sys.stdin.read(1))
+
+            os.system('stty -raw echo')
+            print('')
+            call('controlvm', vm, shutdown_types[shutdown_index])
+
+    elif args.command == 'ctl':
+        for vm in match(args.vm_name):
+            call('controlvm', vm, 'nic' + args.nic, args.attached_to, args.name)
+
+    elif args.command == 'iso':
+        for vm in match(args.vm_name):
+            call('storageattach', vm, '--storagectl', 'IDE', '--port', '1', '--device', '0', '--medium', args.filename)
+
+    elif args.command == 'delete':
+        for vm in match(args.vm_name):
+            if input('Delete ' + vm + ' [y/n]') == 'y':
+                call('unregistervm', vm, '--delete')
+
+    elif args.command == 'clone':
+        call('clonevm', args.vm_src, '--name', args.vm_dest, '--register')
+
+    elif args.command == 'send':
+        # TODO: for example, \\t,\\n, etc will not find the correct code'
+        for vm in match(args.vm_name):
+            if args.filename:
+                key_file = open(args.filename, 'r')
+                for line in key_file:
+                    send(line)
+
+            elif args.string:
+                if args.string[0] == "'":
+                    args.string = args.string[1:-1]
+
+            send(args.string)
+
+    else:
+        print('unrecognized args.command [' + args.command + ']')
+
+    sys.stdout.write(Style.RESET_ALL)
+    sys.stdout.flush()

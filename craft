@@ -1,0 +1,140 @@
+#!/usr/bin/env python
+import os
+from email.mime.multipart import MIMEMultipart
+from email.mime.message import MIMEMessage
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+from email.mime.base import MIMEBase
+from mimetypes import guess_type
+from email.encoders import encode_base64
+from email import generator
+import smtplib
+import argparse
+from datetime import datetime
+
+# use switches cause they're nice
+parser = argparse.ArgumentParser(description='Send an email.')
+parser.add_argument('-p',     dest='password', help='users password', nargs='?')
+parser.add_argument('-f',     dest='frm',      help='from address', nargs='?')
+parser.add_argument('-t',     dest='to',       help='to address', nargs='?')
+parser.add_argument('-d',     dest='date',     help='date', nargs='?')
+parser.add_argument('-c',     dest='count',     help='count', nargs='?')
+parser.add_argument('-s',     dest='subject',  help='subject', nargs='?')
+parser.add_argument('-b',     dest='body',     help='body')
+parser.add_argument('--charset',     dest='charset',  help='body charset defaults to us-ascii')
+parser.add_argument('-a',     dest='attachment', help='comma separated attachments', nargs='?')
+parser.add_argument('--html', action='store_true', help='treat body as html')
+parser.add_argument('--ip',   dest='ip',       help='ip address', default='10.1.1.1', nargs='?')
+parser.add_argument('--port', dest='port',     help='port',       default='25', nargs='?')
+parser.add_argument('--send', action='store_true',     help='should we send instead of save')
+parser.add_argument('filename',   help='name of file to save', nargs='?')
+args = parser.parse_args()
+
+def strip_mime_version(message):
+	for header in message._headers:
+		if header[0] == 'MIME-Version':
+			message._headers.remove(header)
+
+	return message
+
+if args.charset is not None:
+    charset = args.charset
+else:
+    charset = 'us-ascii'
+
+# setup the parameters of the message
+msg = MIMEMultipart()
+def assign_part(var, arg, default):
+	if arg:
+		msg[var] = arg
+	else:
+		msg[var] = default
+
+assign_part('From',    args.frm,     'user1@dom01.test.net')
+assign_part('To',      args.to,      'user2@dom02.test.net')
+assign_part('Date',    args.date,    datetime.now().strftime('%a, %d %b %Y %H:%M:%S -0000'))
+assign_part('Subject', args.subject, 'Subject')
+msg = strip_mime_version(msg)
+
+# add in the message body
+if not args.html:
+	body = ''
+	body_lines = args.body.split('\\n')
+	for line in body_lines:
+		body += line + '\n'
+
+	body_msg = MIMEText(body, 'plain', charset)
+else:
+	body = '<html><body>' + args.body + '</body></html>'
+	body_msg = MIMEText(body, 'html', charset)
+
+msg.attach(strip_mime_version(body_msg))
+
+# attach any jpgs
+if args.attachment:
+	for path in args.attachment.split(','):
+		components = path.split('.')
+		extension = components[len(components)-1]
+		components = path.split('/')
+		filename = components[len(components)-1]
+
+		if extension in ('jpg', 'png', 'gif'):
+			image_data = open(path, 'rb').read()
+			image = MIMEImage(image_data, extension)
+			image.add_header('Content-Disposition', "attachment; filename=\"%s\"" % filename)
+			msg.attach(strip_mime_version(image))
+		elif extension in ('csv', 'txt'):
+			text_data = open(path, 'r').read()
+			text = MIMEText(text_data, 'plain')
+			text.add_header('Content-Disposition', "attachment; filename=\"%s\"" % filename)
+			msg.attach(strip_mime_version(text))
+		elif extension in ('docx'):
+                        mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                        mimetype = mimetype.split('/', 1)
+                        fp = open(filename, 'rb')
+                        attachment = MIMEBase(mimetype[0], mimetype[1])
+                        attachment.set_payload(fp.read())
+                        fp.close()
+                        encode_base64(attachment)
+                        attachment.add_header('Content-Disposition', 'attachment',
+                                              filename=os.path.basename(filename))
+                        msg.attach(attachment)
+                else:
+                        mimetype, encoding = guess_type(filename)
+                        if None == type(mimetype):
+                                print('cannot guess mime type')
+                        mimetype = mimetype.split('/', 1)
+                        fp = open(filename, 'rb')
+                        attachment = MIMEBase(mimetype[0], mimetype[1])
+                        attachment.set_payload(fp.read())
+                        fp.close()
+                        encode_base64(attachment)
+                        attachment.add_header('Content-Disposition', 'attachment',
+                                              filename=os.path.basename(filename))
+                        msg.attach(attachment)
+
+
+
+if args.filename is not None:
+	print("saving file " + str(args.filename))
+	with open(args.filename, 'w') as outfile:
+		gen = generator.Generator(outfile)
+		gen.flatten(msg)
+
+if args.send:
+	#create server
+	server = smtplib.SMTP(args.ip + ':' + args.port)
+
+	# Login Credentials for sending the mail
+	# server.login(msg['From'], args.password)
+
+
+	if args.count:
+		for i in range(int(args.count)):
+			server.sendmail(msg['From'], msg['To'], msg.as_string())
+	else:
+		server.sendmail(msg['From'], msg['To'], msg.as_string())
+
+	server.quit()
+
+	print("successfully sent email to %s:" % (msg['To']))
